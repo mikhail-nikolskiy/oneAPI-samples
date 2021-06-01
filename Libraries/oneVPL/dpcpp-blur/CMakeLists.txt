@@ -46,7 +46,7 @@ endif()
 
 if(DPCPP_COMPILER)
   add_definitions(-DBUILD_DPCPP)
-  target_link_libraries(${TARGET} OpenCL sycl)
+  target_link_libraries(${TARGET} OpenCL sycl ze_loader)
 endif()
 
 if(TARGET VPL)
@@ -54,6 +54,23 @@ if(TARGET VPL)
 else()
   find_package(VPL REQUIRED)
   target_link_libraries(${TARGET} VPL::dispatcher)
+endif()
+
+if(UNIX)
+  find_package(PkgConfig REQUIRED)
+  # note: pkg-config version for libva is *API* version
+  pkg_check_modules(PKG_LIBVA libva>=1.2 libva-drm>=1.2)
+  if(PKG_LIBVA_FOUND)
+    target_compile_definitions(${TARGET} PUBLIC -DLIBVA_SUPPORT)
+    set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+    set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(${TARGET} ${PKG_LIBVA_LIBRARIES}
+                          ${PKG_THREAD_LIBRARIES})
+    target_include_directories(${TARGET} PUBLIC ${PKG_LIBVA_INCLUDE_DIRS})
+  else()
+    message(WARNING "libva not found: building without libVA support")
+  endif()
 endif()
 
 get_directory_property(has_parent PARENT_DIRECTORY)
