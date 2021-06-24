@@ -35,7 +35,7 @@
 #define USE_LEVEL_ZERO_IPC
 #define MAX_PLANES_NUMBER 4
 
-//#define USE_BLUR
+#define USE_BLUR
 
 struct usm_image_context {
   ze_context_handle_t ze_context;
@@ -334,12 +334,6 @@ int main(int argc, char **argv) {
                                          WAIT_100_MILLISECONDS * 1000);
         VERIFY(MFX_ERR_NONE == sts, "Error in SyncOperation");
 
-        sts = mfxAllocator.Lock(mfxAllocator.pthis,
-                                vppOutSurfacePool[nIndexVPPOutSurf].Data.MemId,
-                                &(vppOutSurfacePool[nIndexVPPOutSurf].Data));
-        VERIFY(MFX_ERR_NONE == sts,
-               "Error locking surface before kernel access");
-
 #if 0            
             {
                 mfxMemId mid = vppOutSurfacePool[nIndexVPPOutSurf].Data.MemId;
@@ -364,9 +358,12 @@ int main(int argc, char **argv) {
         mfxFrameSurface1 *pmfxOutSurface;
         pmfxOutSurface = &vppOutSurfacePool[nIndexVPPOutSurf];
 
-        vaapiMemId *myMID = (vaapiMemId *)(pmfxOutSurface->Data.MemId);
+        mfxHDL handle = NULL;
+        sts = mfxAllocator.GetHDL(mfxAllocator.pthis, pmfxOutSurface->Data.MemId, &handle);
+        VERIFY(MFX_ERR_NONE == sts, "Error in mfxAllocator.GetHDL");
+        
+        VASurfaceID va_surface_id = *(VASurfaceID*)handle;
 
-        VASurfaceID va_surface_id = *myMID->m_surface;
         usm_image_context context;
         VADRMPRIMESurfaceDescriptor prime_desc = {};
 
@@ -432,8 +429,8 @@ int main(int argc, char **argv) {
 
 #ifdef USE_BLUR
 
-        BlurFrame(q, OUTPUT_WIDTH, OUTPUT_HEIGHT, pmfxOutSurface->Data.B,
-                  pmfxOutSurface->Data.Pitch, blur_data, blur_pitch);
+        BlurFrame(q, OUTPUT_WIDTH, OUTPUT_HEIGHT, (uint8_t *)ptr,
+                  prime_desc.layers[0].pitch[0], blur_data, blur_pitch);
 
         for (int r = 0; r < OUTPUT_HEIGHT; r++) {
           fwrite(blur_data + (r * blur_pitch), 1, blur_pitch, sink);
@@ -460,12 +457,6 @@ int main(int argc, char **argv) {
 #else
         ze_res = zeMemFree(ze_context, ptr);
 #endif
-
-        sts = mfxAllocator.Unlock(
-            mfxAllocator.pthis, vppOutSurfacePool[nIndexVPPOutSurf].Data.MemId,
-            &(vppOutSurfacePool[nIndexVPPOutSurf].Data));
-        // VERIFY(MFX_ERR_NONE == sts, "Error unlocking surface after kernel
-        // access");
 
         printf("Frame number: %d\r", ++framenum);
         fflush(stdout);
